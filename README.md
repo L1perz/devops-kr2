@@ -1,5 +1,51 @@
-# KR2 template
+# Контрольная работа 2
 
-Counter service on Flask + Redis.
+Карчевский Лев Олегович, ЭФБО-05-24, №11. Вариант 3: `stats.devops.local`, порт `8003`.
 
-Local run: `pip install -r requirements.txt && flask --app app run`
+## Рабочий стенд
+
+Ubuntu Server 24.04.5 в VirtualBox на Arch Linux. VM `devops-vm`: 2 CPU, 2048 MB RAM, динамический диск 25 GB. Host-only IP: `192.168.56.101`; NAT обеспечивает интернет. SSH: `ssh devops`, вход по ключу, гостевой порт 2222.
+
+- https://stats.devops.local/ — приложение КР с Redis.
+- https://stats.devops.local/whoami — сведения о проксировании.
+- https://devops.local/ — статический ресурс ПР №6.
+- https://devops.local/app/ — приложение с PostgreSQL из ПР №7.
+
+## Доставка
+
+Из корня проекта на ноутбуке:
+
+```bash
+rsync -avz --delete --exclude=.env --exclude=.git --dry-run ./ devops:kr2/
+rsync -avz --delete --exclude=.env --exclude=.git ./ devops:kr2/
+```
+
+## Запуск на сервере
+
+Пароль создаётся только при отсутствии файла; существующий секрет не перезаписывается:
+
+```bash
+cd ~/kr2
+if [ ! -f .env ]; then
+  umask 077
+  printf 'REDIS_PASSWORD=%s\n' "$(openssl rand -hex 32)" > .env
+fi
+chmod 600 .env
+docker compose up -d --build --wait
+```
+
+Не экспортировать REDIS_PASSWORD в оболочку. Compose явно передаёт одно и то же обязательное значение пароля обоим сервисам. Проверка готовности использует $$REDIS_PASSWORD внутри контейнера. Redis хранит AOF в именованном томе. Использовать `down` без `-v`.
+
+Приложение опубликовано только на 127.0.0.1:8003; Redis наружу не опубликован. Оба сервиса имеют restart unless-stopped. Для журналов задан предел 5 MB × 2 на сервис. Код приложения принадлежит root, процессы работают от пользователя app; логика app.py и requirements.txt не изменена, добавлен только комментарий студента.
+
+## HTTPS и проверки
+
+Nginx: отдельный файл nginx/kr2, сертификат с SAN DNS:stats.devops.local. Закрытый ключ root:root 600, серверный .env devops:devops 600. Публичный сертификат нужно использовать с `curl --cacert`; браузер допускает исключение только для учебного сайта.
+
+Проверено на VM 27 октября 2026 года: Docker Engine 29.9.2; Redis healthy; UID процессов app и Redis 999; /health отвечает ok; остановка тестового контейнера 0,410 с; повторная сборка использует кэш зависимостей. Счётчик сохранился после down/up: 4 → 5. HTTP возвращает 301, whoami показывает https и адрес клиента 192.168.56.1. Прямые порты 8003 и 6379 с ноутбука недоступны.
+
+Аудит: 23 проверки пройдены, код 0. При временно неверном binding аудит возвращал 1, после восстановления — 0. Отдельно отработана остановка app: Nginx вернул 502, журнал подтвердил недоступность upstream, после запуска приложение восстановлено. UFW и прежняя конфигурация devops-site сохранены. Действующий пароль отсутствует в доставленных файлах за исключением .env.
+
+Pull Request оставляется открытым до защиты. Отчёт Word оформляется отдельно; результаты выше относятся к реально выполненным техническим проверкам.
+
+Шаблон: https://gitverse.ru/dgimatdinov/kr2-template.git
