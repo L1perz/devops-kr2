@@ -1,3 +1,5 @@
+# KR2: Karchevskiy
+
 import os
 import socket
 

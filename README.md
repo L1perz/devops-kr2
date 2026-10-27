@@ -19,11 +19,11 @@ rsync -avz --delete --exclude=.env --exclude=.git ./ devops:kr2/
 cd ~/kr2
 umask 077
 printf 'REDIS_PASSWORD=%s\n' "$(openssl rand -hex 32)" > .env
-docker build -t kr2-app:1.0 .
-docker compose up -d --build --wait
+docker build --network=host -t kr2-app:1.0 .
+docker compose up -d --no-build --wait
 ```
 
-Не экспортировать `REDIS_PASSWORD` в оболочку. В `.env.example` находится только заглушка. Действующий пароль не хранится в Git и не попадает в контекст сборки.
+Параметр `--network=host` использован только при сборке в WSL из-за DNS BuildKit. Рабочие контейнеры используют сеть `backend`. Не экспортировать `REDIS_PASSWORD` в оболочку. В `.env.example` находится только заглушка. Действующий пароль не хранится в Git и не попадает в контекст сборки.
 
 ## Публикация
 
