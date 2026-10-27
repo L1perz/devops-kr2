@@ -2,9 +2,18 @@
 
 Карчевский Лев Олегович, ЭФБО-05-24, №11. Вариант 3: `stats.devops.local`, порт `8003`.
 
-Базовый образ `python:3.12-slim` получен в ПР 7. Логика `app.py` и состав `requirements.txt` сохранены из шаблона; добавлен только комментарий с фамилией.
+## Рабочий стенд
+
+Ubuntu Server 24.04.5 в VirtualBox на Arch Linux. VM `devops-vm`: 2 CPU, 2048 MB RAM, динамический диск 25 GB. Host-only IP: `192.168.56.101`; NAT обеспечивает интернет. SSH: `ssh devops`, вход по ключу, гостевой порт 2222.
+
+- https://stats.devops.local/ — приложение КР с Redis.
+- https://stats.devops.local/whoami — сведения о проксировании.
+- https://devops.local/ — статический ресурс ПР №6.
+- https://devops.local/app/ — приложение с PostgreSQL из ПР №7.
 
 ## Доставка
+
+Из корня проекта на ноутбуке:
 
 ```bash
 rsync -avz --delete --exclude=.env --exclude=.git --dry-run ./ devops:kr2/
@@ -13,31 +22,30 @@ rsync -avz --delete --exclude=.env --exclude=.git ./ devops:kr2/
 
 ## Запуск на сервере
 
-Файл `.env` создаётся один раз на сервере и сохраняется при доставке:
+Пароль создаётся только при отсутствии файла; существующий секрет не перезаписывается:
 
 ```bash
 cd ~/kr2
-umask 077
-printf 'REDIS_PASSWORD=%s\n' "$(openssl rand -hex 32)" > .env
-docker build --network=host -t kr2-app:1.0 .
-docker compose up -d --no-build --wait
+if [ ! -f .env ]; then
+  umask 077
+  printf 'REDIS_PASSWORD=%s\n' "$(openssl rand -hex 32)" > .env
+fi
+chmod 600 .env
+docker compose up -d --build --wait
 ```
 
-Параметр `--network=host` использован только при сборке в WSL из-за DNS BuildKit. Рабочие контейнеры используют сеть `backend`. Не экспортировать `REDIS_PASSWORD` в оболочку. В `.env.example` находится только заглушка. Действующий пароль не хранится в Git и не попадает в контекст сборки.
+Не экспортировать REDIS_PASSWORD в оболочку. Compose явно передаёт одно и то же обязательное значение пароля обоим сервисам. Проверка готовности использует $$REDIS_PASSWORD внутри контейнера. Redis хранит AOF в именованном томе. Использовать `down` без `-v`.
 
-## Публикация
+Приложение опубликовано только на 127.0.0.1:8003; Redis наружу не опубликован. Оба сервиса имеют restart unless-stopped. Для журналов задан предел 5 MB × 2 на сервис. Код приложения принадлежит root, процессы работают от пользователя app; логика app.py и requirements.txt не изменена, добавлен только комментарий студента.
 
-Конфигурация Nginx находится в `nginx/kr2`. На сервере создаются отдельные `/etc/ssl/certs/kr2.crt` с SAN `DNS:stats.devops.local` и `/etc/ssl/private/kr2.key` с правами `600`, владельцем `root`. Файл `kr2` активируется ссылкой в `sites-enabled`; затем выполняются `nginx -t` и `systemctl reload nginx`.
+## HTTPS и проверки
 
-На клиенте имя `stats.devops.local` сопоставляется адресу сервера. Открытый сертификат копируется по SSH. Проверки:
+Nginx: отдельный файл nginx/kr2, сертификат с SAN DNS:stats.devops.local. Закрытый ключ root:root 600, серверный .env devops:devops 600. Публичный сертификат нужно использовать с `curl --cacert`; браузер допускает исключение только для учебного сайта.
 
-```bash
-curl --cacert ~/kr2.crt https://stats.devops.local/
-curl --cacert ~/kr2.crt https://stats.devops.local/whoami
-docker compose ps
-docker compose top
-```
+Проверено на VM 27 октября 2026 года: Docker Engine 29.9.2; Redis healthy; UID процессов app и Redis 999; /health отвечает ok; остановка тестового контейнера 0,410 с; повторная сборка использует кэш зависимостей. Счётчик сохранился после down/up: 4 → 5. HTTP возвращает 301, whoami показывает https и адрес клиента 192.168.56.1. Прямые порты 8003 и 6379 с ноутбука недоступны.
 
-Приложение опубликовано только на `127.0.0.1:8003`. Redis доступен приложению по имени `redis` в сети `backend`, требует пароль и сохраняет AOF в томе `redis_data`; порт `6379` не опубликован. Оба сервиса имеют `restart: unless-stopped`.
+Аудит: 23 проверки пройдены, код 0. При временно неверном binding аудит возвращал 1, после восстановления — 0. Отдельно отработана остановка app: Nginx вернул 502, журнал подтвердил недоступность upstream, после запуска приложение восстановлено. UFW и прежняя конфигурация devops-site сохранены. Действующий пароль отсутствует в доставленных файлах за исключением .env.
+
+Pull Request оставляется открытым до защиты. Отчёт Word оформляется отдельно; результаты выше относятся к реально выполненным техническим проверкам.
 
 Шаблон: https://gitverse.ru/dgimatdinov/kr2-template.git

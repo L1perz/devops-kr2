@@ -3,9 +3,9 @@ services:
   app:
     build: .
     image: kr2-app:1.0
-    env_file: .env
     environment:
       REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is not set}
       STUDENT: Karchevskiy
     ports:
       - "127.0.0.1:8003:8003"
@@ -15,10 +15,16 @@ services:
     networks:
       - backend
     restart: unless-stopped
+    logging:
+      driver: local
+      options:
+        max-size: "5m"
+        max-file: "2"
 
   redis:
     image: redis:7-alpine
-    env_file: .env
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is not set}
     command:
       - redis-server
       - --appendonly
@@ -35,6 +41,11 @@ services:
       timeout: 3s
       retries: 5
     restart: unless-stopped
+    logging:
+      driver: local
+      options:
+        max-size: "5m"
+        max-file: "2"
 
 volumes:
   redis_data:
